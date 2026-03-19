@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Folder Tree</title>
+  <style>
+    :root { --bg:#f6f7fb; --card:#fff; --border:#d9dce5; --muted:#5b6170; --accent:#2563eb; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); font-family: "Inter", system-ui, sans-serif; color:#111; padding:16px; display:flex; justify-content:center; }
+    .container { width:min(900px,100%); display:flex; flex-direction:column; gap:12px; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:12px; box-shadow:0 10px 24px rgba(0,0,0,0.06); }
+    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    input[type="text"] { flex:1; padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:14px; }
+    button { padding:8px 12px; border:none; border-radius:10px; background:var(--accent); color:#fff; cursor:pointer; }
+    button:disabled { opacity:0.6; cursor:not-allowed; }
+    ul { list-style:none; padding-left:18px; margin:4px 0; }
+    li { margin:2px 0; color:#111; }
+    .toggle { cursor:pointer; font-weight:700; margin-right:4px; user-select:none; }
+    .muted { color:var(--muted); font-size:14px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="row">
+        <input id="folderPath" type="text" placeholder="Select a folder" readonly />
+        <button id="pick">Choose Folder</button>
+      </div>
+      <div class="muted">Requires a Chromium-based browser supporting the File System Access API (e.g., Edge/Chrome). Files are read locally only.</div>
+    </div>
+    <div class="card">
+      <h3>Contents</h3>
+      <div id="listing" class="muted">No folder selected.</div>
+      <div id="total" class="muted" style="margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <script>
+    const pickBtn = document.getElementById('pick');
+    const folderPath = document.getElementById('folderPath');
+    const listing = document.getElementById('listing');
+    const totalEl = document.getElementById('total');
+
+    async function getSize(entry){
+      if(entry.kind === 'file'){
+        const file = await entry.getFile();
+        return file.size || 0;
+      }
+      let sum = 0;
+      for await (const child of entry.values()){
+        sum += await getSize(child);
+      }
+      return sum;
+    }
+
+    async function renderHandle(handle){
+      const ul = document.createElement('ul');
+      const entries = [];
+      for await (const entry of handle.values()) entries.push(entry);
+      entries.sort((a,b)=> {
+        if (a.kind !== b.kind) return a.kind === 'directory' ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+      for (const entry of entries){
+        const li = document.createElement('li');
+        if(entry.kind === 'directory'){
+          const toggle = document.createElement('span');
+          toggle.className = 'toggle';
+          toggle.textContent = '−';
+          const label = document.createElement('span');
+          label.textContent = `📁 ${entry.name}`;
+          li.appendChild(toggle);
+          li.appendChild(label);
+          const child = await renderHandle(entry);
+          li.appendChild(child);
+          toggle.addEventListener('click', ()=>{
+            const hidden = child.style.display === 'none';
+            child.style.display = hidden ? '' : 'none';
+            toggle.textContent = hidden ? '−' : '+';
+          });
+        } else {
+          li.textContent = `📄 ${entry.name}`;
+        }
+        ul.appendChild(li);
+      }
+      return ul;
+    }
+
+    async function pickFolder(){
+      if(!window.showDirectoryPicker){
+        listing.textContent = 'This browser does not support showDirectoryPicker.';
+        return;
+      }
+      try {
+        const dirHandle = await window.showDirectoryPicker();
+        folderPath.value = dirHandle.name || '(selected)';
+        listing.textContent = 'Loading...';
+        const [tree, size] = await Promise.all([
+          renderHandle(dirHandle),
+          getSize(dirHandle)
+        ]);
+        listing.innerHTML = '';
+        listing.appendChild(tree);
+        totalEl.textContent = `Total size: ${ (size/1024/1024).toFixed(2) } MB`;
+      } catch(err){
+        if(err.name === 'AbortError'){ listing.textContent = 'Selection cancelled.'; return; }
+        console.error(err);
+        listing.textContent = 'Failed to read folder (permission or support issue).';
+        totalEl.textContent = '';
+      }
+    }
+
+    pickBtn.addEventListener('click', pickFolder);
+  </script>
+</body>
+</html>
