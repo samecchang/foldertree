@@ -3,115 +3,860 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Folder Tree</title>
+  <title>FileTree Explorer</title>
   <style>
-    :root { --bg:#f6f7fb; --card:#fff; --border:#d9dce5; --muted:#5b6170; --accent:#2563eb; }
-    * { box-sizing: border-box; }
-    body { margin:0; background:var(--bg); font-family: "Inter", system-ui, sans-serif; color:#111; padding:16px; display:flex; justify-content:center; }
-    .container { width:min(900px,100%); display:flex; flex-direction:column; gap:12px; }
-    .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:12px; box-shadow:0 10px 24px rgba(0,0,0,0.06); }
-    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    input[type="text"] { flex:1; padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:14px; }
-    button { padding:8px 12px; border:none; border-radius:10px; background:var(--accent); color:#fff; cursor:pointer; }
-    button:disabled { opacity:0.6; cursor:not-allowed; }
-    ul { list-style:none; padding-left:18px; margin:4px 0; }
-    li { margin:2px 0; color:#111; }
-    .toggle { cursor:pointer; font-weight:700; margin-right:4px; user-select:none; }
-    .muted { color:var(--muted); font-size:14px; }
+    :root {
+      --bg:        #1e1e2e;
+      --surface:   #181825;
+      --surface2:  #313244;
+      --border:    #45475a;
+      --text:      #cdd6f4;
+      --text-dim:  #6c7086;
+      --accent:    #89b4fa;
+      --warn:      #f38ba8;
+      --folder:    #f9e2af;
+      --file:      #cdd6f4;
+      --hover:     #2a2a3e;
+      --line:      #45475a;
+      --indent:    22px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    header .logo { font-size: 1.5rem; }
+    header h1   { font-size: 1.15rem; font-weight: 600; color: var(--accent); letter-spacing: .02em; }
+    header .sub { font-size: 0.75rem; color: var(--text-dim); margin-left: auto; }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      flex-shrink: 0;
+    }
+    button {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: background .15s, color .15s, border-color .15s;
+      white-space: nowrap;
+    }
+    button:hover:not(:disabled) { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+    button:disabled { opacity: .4; cursor: default; }
+    button.primary  { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
+    button.primary:hover { opacity: .85; background: var(--accent); color: var(--bg); }
+    button.toggle-on { background: #a6e3a1; color: #1e1e2e; border-color: #a6e3a1; }
+    button.toggle-on:hover:not(:disabled) { background: #a6e3a1; color: #1e1e2e; border-color: #a6e3a1; opacity: .85; }
+
+    .path-display {
+      flex: 1;
+      min-width: 160px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 0.8rem;
+      font-family: 'Consolas', 'Cascadia Code', monospace;
+      color: var(--text-dim);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: default;
+    }
+    .path-display.active { color: var(--text); }
+
+    .search-wrap { position: relative; }
+    .search-wrap::before {
+      content: '⌕';
+      position: absolute;
+      left: 9px; top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-dim);
+      font-size: 1rem;
+      pointer-events: none;
+    }
+    #searchBox {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 10px 6px 26px;
+      font-size: 0.82rem;
+      color: var(--text);
+      width: 180px;
+      outline: none;
+      transition: border-color .15s;
+    }
+    #searchBox::placeholder { color: var(--text-dim); }
+    #searchBox:focus { border-color: var(--accent); }
+    #searchBox:disabled { opacity: .4; }
+
+    .sep { width: 1px; height: 22px; background: var(--border); margin: 0 2px; }
+
+    /* ── Main tree area ── */
+    .main {
+      flex: 1;
+      overflow: auto;
+      padding: 14px 20px 14px 16px;
+    }
+
+    /* ── Empty state ── */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 14px;
+      color: var(--text-dim);
+      text-align: center;
+    }
+    .empty-state .big-icon { font-size: 4rem; }
+    .empty-state p   { font-size: .95rem; }
+    .empty-state .hint { font-size: .75rem; max-width: 340px; line-height: 1.6; }
+    .empty-state .badge {
+      display: inline-block;
+      margin-top: 4px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: .72rem;
+      color: var(--text-dim);
+    }
+
+    /* ── Tree nodes ── */
+    .tree { font-size: .83rem; line-height: 1; }
+
+    .tree-node { display: block; }
+
+    .tree-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 4px 3px 2px;
+      border-radius: 5px;
+      cursor: pointer;
+      white-space: nowrap;
+      position: relative;
+    }
+    .tree-row:hover { background: var(--hover); }
+
+    .caret {
+      width: 14px; height: 14px;
+      display: inline-flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      color: var(--text-dim);
+      font-size: .65rem;
+      transition: transform .15s;
+    }
+    .caret.open { transform: rotate(90deg); }
+    .caret.leaf { visibility: hidden; }
+
+    .node-icon { font-size: .95rem; flex-shrink: 0; line-height: 1.3; }
+
+    .node-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+    .node-name.is-dir  { color: var(--folder); font-weight: 500; }
+    .node-name.is-file { color: var(--file); }
+    .node-name.is-err  { color: var(--warn); font-style: italic; opacity: .8; }
+
+    .ext-tag {
+      font-size: .68rem;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: var(--surface2);
+      color: var(--text-dim);
+      flex-shrink: 0;
+      margin-left: 2px;
+    }
+
+    /* children container with vertical guide line */
+    .tree-children {
+      display: none;
+      padding-left: var(--indent);
+      position: relative;
+    }
+    .tree-children.open { display: block; }
+    .tree-children::before {
+      content: '';
+      position: absolute;
+      left: 9px; top: 0; bottom: 4px;
+      width: 1px;
+      background: var(--line);
+    }
+
+    /* loading / message row */
+    .msg-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 4px;
+      font-size: .78rem;
+      color: var(--text-dim);
+    }
+    .spin {
+      display: inline-block;
+      animation: spin .8s linear infinite;
+      font-style: normal;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* filter-hidden */
+    .filter-hide { display: none !important; }
+
+    /* ── Status bar ── */
+    .status-bar {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 5px 20px;
+      font-size: .72rem;
+      color: var(--text-dim);
+      display: flex;
+      gap: 18px;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+    .status-bar span b { color: var(--text); }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="card">
-      <div class="row">
-        <input id="folderPath" type="text" placeholder="Select a folder" readonly />
-        <button id="pick">Choose Folder</button>
-      </div>
-      <div class="muted">Requires a Chromium-based browser supporting the File System Access API (e.g., Edge/Chrome). Files are read locally only.</div>
-    </div>
-    <div class="card">
-      <h3>Contents</h3>
-      <div id="listing" class="muted">No folder selected.</div>
-      <div id="total" class="muted" style="margin-top:8px;"></div>
-    </div>
+
+<header>
+  <span class="logo">🌳</span>
+  <h1>FileTree Explorer</h1>
+  <span class="sub">File System Access API &nbsp;·&nbsp; Chrome / Edge</span>
+</header>
+
+<div class="toolbar">
+  <button class="primary" id="selectBtn">📂 Select Folder</button>
+  <div class="path-display" id="pathDisplay" title="">No folder selected — click Select Folder</div>
+  <div class="sep"></div>
+  <div class="search-wrap">
+    <input type="text" id="searchBox" placeholder="Filter names…" disabled autocomplete="off" spellcheck="false" />
   </div>
+  <div class="sep"></div>
+  <button id="expandBtn" disabled>Expand All</button>
+  <button id="collapseBtn" disabled>Collapse All</button>
+  <div class="sep"></div>
+  <button id="sysBtn" class="toggle-on" title="Toggle visibility of system/hidden files">🚫 Hide System Files</button>
+  <div class="sep"></div>
+  <button id="saveBtn" disabled title="Export current tree view as a standalone HTML file">💾 Export HTML</button>
+</div>
 
-  <script>
-    const pickBtn = document.getElementById('pick');
-    const folderPath = document.getElementById('folderPath');
-    const listing = document.getElementById('listing');
-    const totalEl = document.getElementById('total');
+<div class="main" id="main">
+  <div class="empty-state" id="emptyState">
+    <span class="big-icon">📁</span>
+    <p>Select a folder to explore its file tree</p>
+    <p class="hint">
+      Folders and files are listed recursively.<br>
+      Folders without read permission are skipped automatically.
+    </p>
+    <span class="badge">⚠️ Requires Chrome 86+ or Edge 86+</span>
+  </div>
+  <div class="tree" id="treeRoot"></div>
+</div>
 
-    async function getSize(entry){
-      if(entry.kind === 'file'){
-        const file = await entry.getFile();
-        return file.size || 0;
-      }
-      let sum = 0;
-      for await (const child of entry.values()){
-        sum += await getSize(child);
-      }
-      return sum;
-    }
+<div class="status-bar" id="statusBar">
+  <span id="statFolders">Folders: <b>0</b></span>
+  <span id="statFiles">Files: <b>0</b></span>
+  <span id="statSkipped" style="display:none">Skipped: <b>0</b></span>
+  <span id="statSystem" style="display:none">System hidden: <b>0</b></span>
+  <span id="statFilter" style="display:none; color: var(--accent)"></span>
+</div>
 
-    async function renderHandle(handle){
-      const ul = document.createElement('ul');
+<script>
+"use strict";
+
+/* ── State ── */
+let rootHandle = null;
+let stats = { dirs: 0, files: 0, skipped: 0 };
+let filterText = '';
+let hideSystem = true;
+
+/* ── DOM refs ── */
+const selectBtn   = document.getElementById('selectBtn');
+const pathDisplay = document.getElementById('pathDisplay');
+const searchBox   = document.getElementById('searchBox');
+const expandBtn   = document.getElementById('expandBtn');
+const collapseBtn = document.getElementById('collapseBtn');
+const emptyState  = document.getElementById('emptyState');
+const treeRoot    = document.getElementById('treeRoot');
+const statFolders = document.getElementById('statFolders');
+const statFiles   = document.getElementById('statFiles');
+const statSkipped = document.getElementById('statSkipped');
+const statSystem  = document.getElementById('statSystem');
+const statFilter  = document.getElementById('statFilter');
+const sysBtn      = document.getElementById('sysBtn');
+const saveBtn     = document.getElementById('saveBtn');
+
+/* ── File icon map (extension → emoji) ── */
+const EXT_ICON = (() => {
+  const m = {};
+  const add = (icon, exts) => exts.forEach(e => (m[e] = icon));
+  add('🌐', ['html','htm','xhtml']);
+  add('🎨', ['css','scss','sass','less','styl']);
+  add('📜', ['js','mjs','cjs','ts','jsx','tsx']);
+  add('🐍', ['py','pyw','pyi','ipynb']);
+  add('☕', ['java','class','jar']);
+  add('💎', ['rb','erb']);
+  add('🐘', ['php']);
+  add('🐹', ['go']);
+  add('🦀', ['rs']);
+  add('⚙️', ['c','h','cpp','hpp','cc','cxx']);
+  add('🍎', ['swift']);
+  add('🔷', ['cs']);
+  add('📋', ['json','jsonc','json5']);
+  add('📋', ['xml','xsd','xsl']);
+  add('📋', ['yaml','yml','toml','ini','cfg','conf']);
+  add('🔐', ['env','env.local','env.example']);
+  add('📝', ['md','markdown','mdx','rst','txt','log']);
+  add('📕', ['pdf']);
+  add('📘', ['doc','docx','odt']);
+  add('📊', ['xls','xlsx','csv','ods']);
+  add('🖼️', ['png','jpg','jpeg','gif','svg','webp','ico','bmp','tiff','avif']);
+  add('🎬', ['mp4','mkv','avi','mov','webm','flv']);
+  add('🎵', ['mp3','wav','ogg','flac','aac','m4a']);
+  add('📦', ['zip','tar','gz','bz2','xz','rar','7z','tgz']);
+  add('🗃️', ['db','sqlite','sqlite3','sql']);
+  add('🐳', ['dockerfile']);
+  add('📜', ['sh','bash','zsh','fish','bat','cmd','ps1','psm1']);
+  add('🔒', ['lock','sum']);
+  add('🏗️', ['gradle','maven','pom','makefile','cmake','ninja']);
+  return m;
+})();
+
+/* ── System file detection ── */
+const SYSTEM_NAMES = new Set([
+  // Windows
+  'desktop.ini','thumbs.db','ehthumbs.db','ehthumbs_vista.db',
+  '$recycle.bin','system volume information',
+  'pagefile.sys','hiberfil.sys','swapfile.sys',
+  'ntuser.dat','ntuser.ini','ntuser.dat.log','ntuser.dat.log1','ntuser.dat.log2',
+  'bootmgr','bootnxt','autorun.inf',
+  'dumpstack.log','dumpstack.log.tmp',
+  'boot.ini','io.sys','msdos.sys','config.sys','bootsect.bak',
+  // macOS
+  '.ds_store','.appledouble','.lsoverride',
+  '.spotlight-v100','.trashes','.fseventsd',
+  '.temporaryitems','.volumeicon.icns',
+  '.com.apple.timemachine.donotpresent',
+  '.appledb','.appledesktop',
+  'thumbs.db:encryptable',
+]);
+function isSystemFile(name) {
+  const l = name.toLowerCase();
+  if (SYSTEM_NAMES.has(l)) return true;
+  if (l.startsWith('$')) return true;   // Windows: $Recycle.Bin, $WinREAgent …
+  if (l.startsWith('._')) return true;  // macOS resource forks
+  return false;
+}
+
+function fileIcon(name) {
+  const lower = name.toLowerCase();
+  // Exact filenames
+  if (lower === 'dockerfile')       return '🐳';
+  if (lower === 'makefile')         return '🏗️';
+  if (lower === '.gitignore')       return '🚫';
+  if (lower === '.env')             return '🔐';
+  if (lower === 'package.json')     return '📦';
+  if (lower === 'tsconfig.json')    return '🔷';
+  if (lower === 'readme.md')        return '📖';
+  const dot = lower.lastIndexOf('.');
+  if (dot >= 0) {
+    const ext = lower.slice(dot + 1);
+    if (EXT_ICON[ext]) return EXT_ICON[ext];
+  }
+  return '📄';
+}
+
+function extTag(name) {
+  const dot = name.lastIndexOf('.');
+  if (dot < 0 || dot === name.length - 1) return '';
+  return name.slice(dot + 1).toLowerCase();
+}
+
+/* ── Stats helpers ── */
+function updateStats() {
+  statFolders.innerHTML = `Folders: <b>${stats.dirs}</b>`;
+  statFiles.innerHTML   = `Files: <b>${stats.files}</b>`;
+  if (stats.skipped > 0) {
+    statSkipped.style.display = '';
+    statSkipped.innerHTML = `🔒 Skipped: <b>${stats.skipped}</b>`;
+  }
+  if ((stats.system || 0) > 0) {
+    statSystem.style.display = '';
+    statSystem.innerHTML = `🚫 System hidden: <b>${stats.system}</b>`;
+  }
+}
+
+/* ── Create a directory node (lazy-loads children on expand) ── */
+function createDirNode(handle, depth = 0) {
+  const node = document.createElement('div');
+  node.className = 'tree-node';
+  node.dataset.kind = 'dir';
+  node.dataset.nameLower = handle.name.toLowerCase();
+
+  const row = document.createElement('div');
+  row.className = 'tree-row';
+
+  const caret = document.createElement('span');
+  caret.className = 'caret';
+  caret.textContent = '▶';
+
+  const icon = document.createElement('span');
+  icon.className = 'node-icon';
+  icon.textContent = '📁';
+
+  const label = document.createElement('span');
+  label.className = 'node-name is-dir';
+  label.textContent = handle.name;
+
+  row.append(caret, icon, label);
+  node.appendChild(row);
+
+  const children = document.createElement('div');
+  children.className = 'tree-children';
+  node.appendChild(children);
+
+  let loaded   = false;
+  let expanded = false;
+
+  /* -- expand (loads lazily) -- */
+  const doExpand = async () => {
+    if (!loaded) {
+      loaded = true;
+      // Show spinner while loading
+      const spinner = document.createElement('div');
+      spinner.className = 'msg-row';
+      spinner.innerHTML = '<i class="spin">⟳</i> Loading…';
+      children.appendChild(spinner);
+
       const entries = [];
-      for await (const entry of handle.values()) entries.push(entry);
-      entries.sort((a,b)=> {
-        if (a.kind !== b.kind) return a.kind === 'directory' ? -1 : 1;
-        return a.name.localeCompare(b.name);
-      });
-      for (const entry of entries){
-        const li = document.createElement('li');
-        if(entry.kind === 'directory'){
-          const toggle = document.createElement('span');
-          toggle.className = 'toggle';
-          toggle.textContent = '−';
-          const label = document.createElement('span');
-          label.textContent = `📁 ${entry.name}`;
-          li.appendChild(toggle);
-          li.appendChild(label);
-          const child = await renderHandle(entry);
-          li.appendChild(child);
-          toggle.addEventListener('click', ()=>{
-            const hidden = child.style.display === 'none';
-            child.style.display = hidden ? '' : 'none';
-            toggle.textContent = hidden ? '−' : '+';
-          });
-        } else {
-          li.textContent = `📄 ${entry.name}`;
+      try {
+        for await (const [, h] of handle.entries()) {
+          if (hideSystem && isSystemFile(h.name)) { stats.system = (stats.system || 0) + 1; continue; }
+          entries.push(h);
         }
-        ul.appendChild(li);
-      }
-      return ul;
-    }
-
-    async function pickFolder(){
-      if(!window.showDirectoryPicker){
-        listing.textContent = 'This browser does not support showDirectoryPicker.';
+      } catch (err) {
+        // Permission error on this directory
+        children.innerHTML = '';
+        const errRow = document.createElement('div');
+        errRow.className = 'msg-row';
+        errRow.innerHTML = '🔒 <em style="color:var(--warn)">Access denied</em>';
+        children.appendChild(errRow);
+        stats.skipped++;
+        updateStats();
+        expanded = true;
+        children.classList.add('open');
+        caret.classList.add('open');
+        icon.textContent = '📂';
         return;
       }
-      try {
-        const dirHandle = await window.showDirectoryPicker();
-        folderPath.value = dirHandle.name || '(selected)';
-        listing.textContent = 'Loading...';
-        const [tree, size] = await Promise.all([
-          renderHandle(dirHandle),
-          getSize(dirHandle)
-        ]);
-        listing.innerHTML = '';
-        listing.appendChild(tree);
-        totalEl.textContent = `Total size: ${ (size/1024/1024).toFixed(2) } MB`;
-      } catch(err){
-        if(err.name === 'AbortError'){ listing.textContent = 'Selection cancelled.'; return; }
-        console.error(err);
-        listing.textContent = 'Failed to read folder (permission or support issue).';
-        totalEl.textContent = '';
+
+      // Sort: dirs first, then files; both alphabetically
+      entries.sort((a, b) => {
+        if (a.kind !== b.kind) return a.kind === 'directory' ? -1 : 1;
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      });
+
+      children.innerHTML = '';
+
+      if (entries.length === 0) {
+        const emptyRow = document.createElement('div');
+        emptyRow.className = 'msg-row';
+        emptyRow.textContent = '(empty)';
+        children.appendChild(emptyRow);
       }
+
+      for (const h of entries) {
+        if (h.kind === 'directory') {
+          let child;
+          try {
+            // Probe access before creating the node
+            // (will throw SecurityError / NotAllowedError if no permission)
+            await h.queryPermission({ mode: 'read' });
+            child = createDirNode(h, depth + 1);
+            stats.dirs++;
+          } catch (_) {
+            child = createLockedNode(h.name);
+            stats.skipped++;
+          }
+          children.appendChild(child);
+        } else {
+          children.appendChild(createFileNode(h.name));
+          stats.files++;
+        }
+      }
+
+      updateStats();
+      if (filterText) applyFilter();
     }
 
-    pickBtn.addEventListener('click', pickFolder);
-  </script>
+    expanded = true;
+    children.classList.add('open');
+    caret.classList.add('open');
+    icon.textContent = '📂';
+  };
+
+  /* -- collapse -- */
+  const doCollapse = () => {
+    expanded = false;
+    children.classList.remove('open');
+    caret.classList.remove('open');
+    icon.textContent = '📁';
+  };
+
+  row.addEventListener('click', () => {
+    if (expanded) doCollapse(); else doExpand();
+  });
+
+  // Expose for expand-all / collapse-all
+  node._expand   = doExpand;
+  node._collapse = doCollapse;
+  node._isDir    = true;
+
+  return node;
+}
+
+/* ── Create a file node ── */
+function createFileNode(name) {
+  const node = document.createElement('div');
+  node.className = 'tree-node';
+  node.dataset.kind = 'file';
+  node.dataset.nameLower = name.toLowerCase();
+
+  const row = document.createElement('div');
+  row.className = 'tree-row';
+  row.style.cursor = 'default';
+
+  const caret = document.createElement('span');
+  caret.className = 'caret leaf';
+
+  const icon = document.createElement('span');
+  icon.className = 'node-icon';
+  icon.textContent = fileIcon(name);
+
+  const label = document.createElement('span');
+  label.className = 'node-name is-file';
+  label.textContent = name;
+
+  const ext = extTag(name);
+  row.append(caret, icon, label);
+  if (ext) {
+    const badge = document.createElement('span');
+    badge.className = 'ext-tag';
+    badge.textContent = ext;
+    row.appendChild(badge);
+  }
+  node.appendChild(row);
+  return node;
+}
+
+/* ── Create a locked (permission denied) directory node ── */
+function createLockedNode(name) {
+  const node = document.createElement('div');
+  node.className = 'tree-node';
+
+  const row = document.createElement('div');
+  row.className = 'tree-row';
+  row.style.cursor = 'default';
+  row.title = 'Access denied — no read permission';
+
+  const caret = document.createElement('span');
+  caret.className = 'caret leaf';
+
+  const icon = document.createElement('span');
+  icon.className = 'node-icon';
+  icon.textContent = '🔒';
+
+  const label = document.createElement('span');
+  label.className = 'node-name is-err';
+  label.textContent = name;
+
+  const badge = document.createElement('span');
+  badge.className = 'ext-tag';
+  badge.style.color = 'var(--warn)';
+  badge.textContent = 'no access';
+
+  row.append(caret, icon, label, badge);
+  node.appendChild(row);
+  return node;
+}
+
+/* ── Filter logic ── */
+function applyFilter() {
+  const q = filterText.trim();
+  const allNodes = treeRoot.querySelectorAll('.tree-node');
+
+  if (!q) {
+    allNodes.forEach(n => n.classList.remove('filter-hide'));
+    statFilter.style.display = 'none';
+    return;
+  }
+
+  // Bottom-up: hide a node if its name doesn't match AND
+  // none of its loaded descendants match
+  let visCount = 0;
+  // We need to process deepest first → reverse the NodeList
+  const arr = Array.from(allNodes).reverse();
+  arr.forEach(n => {
+    const name = n.dataset.nameLower || '';
+    const matchSelf = name.includes(q);
+    // Check if any visible child matches
+    const childMatch = n.querySelector(`.tree-node:not(.filter-hide)`);
+    if (matchSelf || childMatch) {
+      n.classList.remove('filter-hide');
+      if (n.dataset.kind === 'file') visCount++;
+    } else {
+      n.classList.add('filter-hide');
+    }
+  });
+
+  statFilter.style.display = '';
+  statFilter.textContent = `Filter "${q}"`;
+}
+
+/* ── Expand / Collapse All ── */
+expandBtn.addEventListener('click', async () => {
+  expandBtn.disabled = true;
+  // Collect dir nodes; expand them; new children are added so re-query
+  const expand = async (container) => {
+    const dirNodes = Array.from(container.querySelectorAll('.tree-node[data-kind="dir"]'));
+    for (const n of dirNodes) {
+      if (n._expand) await n._expand();
+    }
+    // After expanding, there may be new nodes; expand them too
+    const newDirNodes = Array.from(container.querySelectorAll('.tree-node[data-kind="dir"]'));
+    if (newDirNodes.length > dirNodes.length) {
+      await expand(container); // recurse until stable
+    }
+  };
+  await expand(treeRoot);
+  expandBtn.disabled = false;
+});
+
+collapseBtn.addEventListener('click', () => {
+  // Collapse deepest first
+  const dirNodes = Array.from(treeRoot.querySelectorAll('.tree-node[data-kind="dir"]')).reverse();
+  dirNodes.forEach(n => { if (n._collapse) n._collapse(); });
+  // Also collapse root
+  const root = treeRoot.querySelector('.tree-node[data-kind="dir"]');
+  if (root && root._collapse) root._collapse();
+});
+
+/* ── System files toggle ── */
+sysBtn.addEventListener('click', async () => {
+  hideSystem = !hideSystem;
+  sysBtn.classList.toggle('toggle-on', hideSystem);
+  sysBtn.textContent = hideSystem ? '🚫 Hide System Files' : '👁 Show System Files';
+  if (rootHandle) {
+    stats = { dirs: 0, files: 0, skipped: 0, system: 0 };
+    treeRoot.innerHTML = '';
+    statSkipped.style.display = 'none';
+    statSystem.style.display  = 'none';
+    statFilter.style.display  = 'none';
+    searchBox.value = '';
+    filterText = '';
+    updateStats();
+    stats.dirs++;
+    const rootNode = createDirNode(rootHandle, 0);
+    treeRoot.appendChild(rootNode);
+    await rootNode._expand();
+  }
+});
+
+/* ── Search ── */
+searchBox.addEventListener('input', () => {
+  filterText = searchBox.value.toLowerCase();
+  applyFilter();
+});
+
+/* ── Select Folder ── */
+selectBtn.addEventListener('click', async () => {
+  if (!window.showDirectoryPicker) {
+    alert(
+      'Your browser does not support the File System Access API.\n' +
+      'Please open this file in Chrome 86+ or Edge 86+.'
+    );
+    return;
+  }
+
+  try {
+    rootHandle = await window.showDirectoryPicker({ mode: 'read' });
+  } catch (e) {
+    if (e.name !== 'AbortError') console.error(e);
+    return;
+  }
+
+  // Reset
+  stats = { dirs: 0, files: 0, skipped: 0, system: 0 };
+  filterText = '';
+  searchBox.value = '';
+  treeRoot.innerHTML = '';
+  emptyState.style.display = 'none';
+  pathDisplay.textContent  = '📁 ' + rootHandle.name;
+  pathDisplay.title        = rootHandle.name;
+  pathDisplay.classList.add('active');
+  searchBox.disabled   = false;
+  expandBtn.disabled   = false;
+  collapseBtn.disabled = false;
+  saveBtn.disabled     = false;
+  statSkipped.style.display = 'none';
+  statSystem.style.display  = 'none';
+  statFilter.style.display  = 'none';
+  updateStats();
+
+  // Build root node and auto-expand it
+  stats.dirs++;
+  const rootNode = createDirNode(rootHandle, 0);
+  treeRoot.appendChild(rootNode);
+  await rootNode._expand();
+});
+
+/* ── Export HTML ── */
+function escH(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function buildExportHtml() {
+  if (!rootHandle) return null;
+
+  function walkNode(node) {
+    const kind = node.dataset.kind;
+    if (!kind) return '';
+    const iconEl  = node.querySelector(':scope > .tree-row .node-icon');
+    const nameEl  = node.querySelector(':scope > .tree-row .node-name');
+    const badgeEl = node.querySelector(':scope > .tree-row .ext-tag');
+    const icon    = iconEl  ? iconEl.textContent  : '';
+    const name    = nameEl  ? nameEl.textContent  : '';
+    const badge   = badgeEl ? badgeEl.textContent : '';
+    const isErr   = nameEl && nameEl.classList.contains('is-err');
+    const nmCls   = kind === 'dir' ? 'dir' : isErr ? 'err' : 'file';
+    let html = `<div class="node"><div class="row ${kind}">`;
+    html += `<span class="ic">${icon}</span>`;
+    html += `<span class="nm ${nmCls}">${escH(name)}</span>`;
+    if (badge) html += `<span class="bd${isErr ? ' berr' : ''}">${escH(badge)}</span>`;
+    html += '</div>';
+    const childDiv = node.querySelector(':scope > .tree-children.open');
+    if (childDiv) {
+      html += '<div class="ch">';
+      for (const c of childDiv.children) {
+        if (c.classList.contains('tree-node'))    html += walkNode(c);
+        else if (c.classList.contains('msg-row')) html += `<div class="msg">${escH(c.textContent.trim())}</div>`;
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  let body = '';
+  for (const c of treeRoot.children) {
+    if (c.classList.contains('tree-node')) body += walkNode(c);
+  }
+
+  const now = new Date().toLocaleString('en-US', {
+    year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'
+  });
+  const sysNote  = (stats.system || 0) > 0 ? `, ${stats.system} system hidden` : '';
+  const skipNote = stats.skipped > 0 ? `, ${stats.skipped} skipped` : '';
+  const statsLine = `${stats.dirs} folders, ${stats.files} files${skipNote}${sysNote}`;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>FileTree \u2014 ${escH(rootHandle.name)}</title>
+<style>
+:root{--bg:#1e1e2e;--sf:#181825;--sf2:#313244;--bd:#45475a;--tx:#cdd6f4;--dim:#6c7086;--ac:#89b4fa;--wn:#f38ba8;--fo:#f9e2af;--ln:#45475a}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+header{background:var(--sf);border-bottom:1px solid var(--bd);padding:12px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+header h1{font-size:1.1rem;color:var(--ac);font-weight:600}
+.meta{font-size:.72rem;color:var(--dim);margin-left:auto}
+.wrap{padding:14px 20px;font-size:.83rem}
+.node{display:block}.row{display:flex;align-items:center;gap:4px;padding:2px 4px;border-radius:4px;white-space:nowrap}
+.ic{font-size:.9rem;flex-shrink:0}.nm{overflow:hidden;text-overflow:ellipsis}
+.nm.dir{color:var(--fo);font-weight:500}.nm.file{color:var(--tx)}.nm.err{color:var(--wn);font-style:italic;opacity:.8}
+.bd{font-size:.68rem;padding:1px 5px;border-radius:3px;background:var(--sf2);color:var(--dim);flex-shrink:0}.bd.berr{color:var(--wn)}
+.ch{padding-left:20px;position:relative}.ch::before{content:'';position:absolute;left:8px;top:0;bottom:4px;width:1px;background:var(--ln)}
+.msg{color:var(--dim);font-style:italic;padding:2px 4px;font-size:.78rem}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:3px}
+</style>
+</head>
+<body>
+<header>
+  <span style="font-size:1.4rem">\u{1F333}</span>
+  <h1>${escH(rootHandle.name)}</h1>
+  <span class="meta">Exported ${escH(now)} &nbsp;&middot;&nbsp; ${escH(statsLine)}</span>
+</header>
+<div class="wrap">${body}</div>
+</body>
+</html>`;
+}
+
+saveBtn.addEventListener('click', () => {
+  const html = buildExportHtml();
+  if (!html) return;
+  const blob = new Blob([html], { type: 'text/html' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `filetree-${rootHandle.name}-${new Date().toISOString().slice(0,10)}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+/* ── Browser support hint ── */
+if (!window.showDirectoryPicker) {
+  document.getElementById('emptyState').innerHTML = `
+    <span class="big-icon">⚠️</span>
+    <p style="color:var(--warn)">Browser not supported</p>
+    <p class="hint">
+      FileTree Explorer requires the <b>File System Access API</b>.<br>
+      Please open this page in <b>Google Chrome 86+</b> or <b>Microsoft Edge 86+</b>.
+    </p>`;
+}
+</script>
 </body>
 </html>
